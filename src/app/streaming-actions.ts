@@ -6,6 +6,7 @@ import { gateway } from '@ai-sdk/gateway';
 export type StreamUpdate = {
   modelName: string;
   language: string;
+  stepIndex: number;
   text: string;
   isComplete: boolean;
   similarity?: number;
@@ -59,11 +60,14 @@ export async function* runTelephoneGameStreaming(
   yield {
     modelName,
     language: 'Original',
+    stepIndex: 0,
     text: currentText,
     isComplete: false,
   };
 
-  for (const step of chain) {
+  for (let i = 0; i < chain.length; i++) {
+    const step = chain[i];
+    const stepIndex = i + 1;
     try {
       let fullText = '';
 
@@ -79,6 +83,7 @@ export async function* runTelephoneGameStreaming(
         yield {
           modelName,
           language: step.lang,
+          stepIndex,
           text: fullText,
           isComplete: false,
         };
@@ -90,6 +95,7 @@ export async function* runTelephoneGameStreaming(
       yield {
         modelName,
         language: step.lang,
+        stepIndex,
         text: fullText,
         isComplete: true,
       };
@@ -101,6 +107,7 @@ export async function* runTelephoneGameStreaming(
       yield {
         modelName,
         language: step.lang,
+        stepIndex,
         text: `[Error translating to ${step.lang}]`,
         isComplete: true,
       };
@@ -114,6 +121,7 @@ export async function* runTelephoneGameStreaming(
   yield {
     modelName,
     language: 'English',
+    stepIndex: chain.length, // Target the last step (English) to update it with similarity
     text: currentText,
     isComplete: true,
     similarity,

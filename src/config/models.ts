@@ -1,6 +1,6 @@
 // Model configuration for AI Telephone Game
 // Used by both backend (actions.ts) and frontend (page.tsx)
-// Selected: Cheapest model from 3 different providers
+// Selected: Cheapest model from different providers
 
 export const COMPETING_MODELS = [
   {
@@ -14,6 +14,18 @@ export const COMPETING_MODELS = [
     modelId: 'groq/llama-3.3-70b-versatile',
     provider: 'Groq',
     pricing: '$0.05/M input',
+  },
+  {
+    name: 'GPT-4o Mini',
+    modelId: 'openai/gpt-4o-mini',
+    provider: 'OpenAI',
+    pricing: '$0.15/M input',
+  },
+  {
+    name: 'Claude 3 Haiku',
+    modelId: 'anthropic/claude-3-haiku-20240307',
+    provider: 'Anthropic',
+    pricing: '$0.25/M input',
   }
 ];
 

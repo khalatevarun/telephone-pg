@@ -6,7 +6,7 @@ import { COMPETING_MODELS } from '@/config/models';
 
 type ModelStreamState = {
   modelName: string;
-  steps: Record<string, string>; // language -> text
+  steps: Record<number, string>; // stepIndex -> text
   isProcessing: boolean;
   similarity?: number;
 };
@@ -33,7 +33,7 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [isGameRunning, setIsGameRunning] = useState(false);
   const [streamStates, setStreamStates] = useState<Record<string, ModelStreamState>>({});
-  const [winner, setWinner] = useState<{ modelName: string; similarity: number } | null>(null);
+  const [winners, setWinners] = useState<{ modelName: string; similarity: number }[]>([]);
   const [chain, setChain] = useState<string[]>(['French', 'Spanish']);
 
   const addLanguage = (lang: string) => {
@@ -48,14 +48,14 @@ export default function Home() {
     if (!input.trim()) return;
     
     setIsGameRunning(true);
-    setWinner(null);
+    setWinners([]);
     
     // Initialize stream states for all models
     const initialStates: Record<string, ModelStreamState> = {};
     COMPETING_MODELS.forEach((model) => {
       initialStates[model.name] = {
         modelName: model.name,
-        steps: { Original: input },
+        steps: { 0: input }, // 0 is Original
         isProcessing: true,
       };
     });
@@ -63,15 +63,6 @@ export default function Home() {
 
     // Construct the full chain for the server action
     // The server action expects the intermediate steps + the final step (English)
-    // But wait, the server action logic I wrote:
-    // 1. Emits Original
-    // 2. Iterates over chain and translates
-    // 3. Calculates similarity with Original
-    // So if I pass ['French', 'Spanish'], it will translate to French, then Spanish.
-    // Then it calculates similarity between Spanish and Original? No, that's wrong.
-    // The last step MUST be English for the comparison to make sense.
-    // So I should append 'English' to the chain passed to the server.
-    
     const serverChain = [...chain.map(lang => ({ lang })), { lang: 'English' }];
 
     try {
@@ -94,7 +85,7 @@ export default function Home() {
                 modelName: update.modelName,
                 steps: {
                   ...prev[update.modelName]?.steps,
-                  [update.language]: update.text,
+                  [update.stepIndex]: update.text,
                 },
                 isProcessing: !update.isComplete,
                 similarity: update.similarity,
@@ -109,14 +100,17 @@ export default function Home() {
         })
       );
 
-      // Determine winner
-      let bestResult = results[0];
+      // Determine winner(s)
+      let maxSimilarity = -1;
       for (const result of results) {
-        if (result.similarity > bestResult.similarity) {
-          bestResult = result;
+        if (result.similarity > maxSimilarity) {
+          maxSimilarity = result.similarity;
         }
       }
-      setWinner({ modelName: bestResult.modelName, similarity: bestResult.similarity });
+
+      const winningModels = results.filter(r => Math.abs(r.similarity - maxSimilarity) < 0.0001);
+      setWinners(winningModels);
+
     } catch (error) {
       console.error('Error running game:', error);
       alert('Failed to run the game. Make sure your API key is valid and you have network access.');
@@ -134,13 +128,18 @@ export default function Home() {
 
         {/* Compact Input Section - Centered */}
         <div className="flex gap-3 mb-6 max-w-2xl mx-auto">
-          <textarea
+          <input
+            type="text"
             id="phrase"
             className="flex-1 bg-white border-2 border-gray-300 rounded-lg p-3 text-black text-sm focus:outline-none focus:border-black focus:ring-2 focus:ring-black focus:ring-opacity-20 transition"
-            rows={1}
             placeholder="Enter a phrase..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isGameRunning && input.trim()) {
+                handleStart();
+              }
+            }}
             disabled={isGameRunning}
           />
           <button
@@ -210,15 +209,14 @@ export default function Home() {
         </div>
 
         {/* Streaming Results Display */}
-        {Object.keys(streamStates).length > 0 && (
-          <div className="space-y-4">
+        <div className="space-y-4">
             {/* Column-based Streaming Results */}
             <div className="overflow-x-auto">
               <div className="grid gap-0 rounded-lg overflow-hidden border-2 border-gray-300 shadow-sm" style={{ gridTemplateColumns: `repeat(${COMPETING_MODELS.length}, 1fr)` }}>
                 {/* Model Header Row */}
                 {COMPETING_MODELS.map((model) => {
                   const state = streamStates[model.name];
-                  const isWinner = winner?.modelName === model.name;
+                  const isWinner = winners.some(w => w.modelName === model.name);
                   return (
                     <div
                       key={model.name}
@@ -234,82 +232,64 @@ export default function Home() {
                 })}
 
                 {/* Language Rows */}
-                {['Original', ...chain, 'English'].map((lang, langIndex) => (
-                  <div key={`lang-${langIndex}`} className="contents">
-                    {COMPETING_MODELS.map((model, modelIndex) => {
-                      const state = streamStates[model.name];
-                      // Handle duplicate language keys in the steps object if necessary
-                      // But wait, if I have French -> Spanish -> French, the keys in `steps` will overwrite each other?
-                      // Yes, `steps` is Record<string, string>.
-                      // If the chain has duplicate languages, we have a problem.
-                      // We should probably use index-based keys or ensure unique keys.
-                      // But the server emits updates with `language: step.lang`.
-                      // If I have French twice, the second one will overwrite the first in the UI state.
-                      // And the UI renders based on the chain array.
-                      // If I have French (1) and French (2), and the server emits "French", which one is it?
-                      // The server iterates sequentially.
-                      // If I change the server to emit `stepIndex` or something, that would be better.
-                      // But for now, let's assume users won't put the same language twice or if they do, it might be weird.
-                      // Actually, let's fix this properly.
-                      // The server should emit the step index or unique ID.
-                      // But I don't want to change the server protocol too much if I can avoid it.
-                      // Wait, the server emits `language`.
-                      // If I have French -> Spanish -> French.
-                      // 1. Translate to French. Emit { language: 'French' }.
-                      // 2. Translate to Spanish. Emit { language: 'Spanish' }.
-                      // 3. Translate to French. Emit { language: 'French' }.
-                      // The client state `steps` will update 'French' with the latest text.
-                      // The UI maps over `['Original', 'French', 'Spanish', 'French', 'English']`.
-                      // The first 'French' row will show the latest French text (from step 3).
-                      // The second 'French' row will also show the latest French text.
-                      // This is a bug.
-                      // I should probably use the language name as the key for now and assume uniqueness or accept the bug.
-                      // Or I can change the server to emit `stepIndex`.
-                      // Let's stick to the current implementation for now as it's simpler and "good enough" for a demo unless the user specifically tries to break it.
-                      // Actually, the user might want to do English -> French -> English -> French -> English.
-                      // Let's just use the language name for now.
-                      
-                      const text = state?.steps[lang] || '';
-                      const isWinner = winner?.modelName === model.name;
-                      const isLastCol = modelIndex === COMPETING_MODELS.length - 1;
+                {Array.from({ length: chain.length + 2 }).map((_, stepIndex) => {
+                  // Determine the label for this row
+                  let rowLabel = '';
+                  if (stepIndex === 0) {
+                    rowLabel = 'Original';
+                  } else if (stepIndex === chain.length + 1) {
+                    rowLabel = 'English (Final)';
+                  } else {
+                    // Intermediate steps are 1-based in the loop, but 0-based in the chain array
+                    rowLabel = chain[stepIndex - 1];
+                  }
 
-                      return (
-                        <div
-                          key={`${model.name}-${lang}-${langIndex}`}
-                          className={`border-r border-b border-gray-300 p-3 min-h-20 flex flex-col text-xs leading-relaxed ${
-                            isLastCol ? 'border-r-0' : ''
-                          } ${
-                            isWinner && lang === 'English' && langIndex === chain.length + 1 // Only highlight the FINAL English
-                              ? 'bg-green-100 border-green-300'
-                              : 'bg-white'
-                          }`}
-                        >
-                          <div className="font-semibold text-gray-700 mb-1">{lang}</div>
-                          <p className="break-words flex-1">
-                            {text || (
-                              <span className="text-gray-400 italic">
-                                {state?.isProcessing ? '...' : '-'}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                  return (
+                    <div key={`step-${stepIndex}`} className="contents">
+                      {COMPETING_MODELS.map((model, modelIndex) => {
+                        const state = streamStates[model.name];
+                        const text = state?.steps[stepIndex] || '';
+                        const isWinner = winners.some(w => w.modelName === model.name);
+                        const isLastCol = modelIndex === COMPETING_MODELS.length - 1;
+                        const isFinalStep = stepIndex === chain.length + 1;
+
+                        return (
+                          <div
+                            key={`${model.name}-${stepIndex}`}
+                            className={`border-r border-b border-gray-300 p-3 min-h-20 flex flex-col text-xs leading-relaxed ${
+                              isLastCol ? 'border-r-0' : ''
+                            } ${
+                              isWinner && isFinalStep
+                                ? 'bg-green-100 border-green-300'
+                                : 'bg-white'
+                            }`}
+                          >
+                            <div className="font-semibold text-gray-700 mb-1">{rowLabel}</div>
+                            <p className="break-words flex-1">
+                              {text || (
+                                <span className="text-gray-400 italic">
+                                  {state?.isProcessing ? '...' : '-'}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             {/* Winner Announcement */}
-            {winner && !isGameRunning && (
+            {winners.length > 0 && !isGameRunning && (
               <div className={`rounded-lg p-4 border-2 border-green-400 bg-green-50 shadow-sm`}>
                 <p className="text-sm font-bold text-green-900">
-                  🏆 {winner.modelName} wins with {(winner.similarity * 100).toFixed(1)}% match
+                  🏆 {winners.map(w => w.modelName).join(' & ')} {winners.length > 1 ? 'win' : 'wins'} with {(winners[0].similarity * 100).toFixed(1)}% match
                 </p>
               </div>
             )}
           </div>
-        )}
       </div>
     </main>
   );
