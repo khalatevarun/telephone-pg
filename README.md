@@ -1,4 +1,4 @@
-# Translation Telephone - Model Eval Game
+# Translation Telephone - A Model Eval Game
 
 https://github.com/user-attachments/assets/f8c95567-0fec-4dae-963f-2d599738f169
 
@@ -47,9 +47,9 @@ A competitive "Telephone" game built for the **AI Gateway Hackathon**. Multiple 
    ```
 5. **Play**: Open [http://localhost:3000](http://localhost:3000) and click "Start Game"!
 
-## Hackathon Details
 
-Built for the [AI Gateway Game Hackathon](https://ai-gateway-game-hackathon.vercel.app/). 
+
+
 
 
 ## Project Structure
@@ -61,4 +61,4 @@ Built for the [AI Gateway Game Hackathon](https://ai-gateway-game-hackathon.verc
 
 ---
 
-*telephone-pg* - Where AI models play telephone and compete for accuracy!
+Built for the [AI Gateway Game Hackathon](https://ai-gateway-game-hackathon.vercel.app/). 
