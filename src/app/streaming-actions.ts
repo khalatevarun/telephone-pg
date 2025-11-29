@@ -43,7 +43,7 @@ async function calculateSimilarity(str1: string, str2: string): Promise<{ semant
       literal = 1 - editDistance / longer.length;
     }
     
-    const combined = 0.7 * semantic + 0.3 * literal;
+    const combined = 0.85 * semantic + 0.15 * literal;
     
     return { semantic, literal, combined };
   } catch (error) {
@@ -62,7 +62,7 @@ async function calculateSimilarity(str1: string, str2: string): Promise<{ semant
       const editDistance = getEditDistance(longer, shorter);
       literal = 1 - editDistance / longer.length;
     }
-    return { semantic: 0, literal, combined: 0.3 * literal }; // Only literal contributes
+    return { semantic: 0, literal, combined: 0.1 * literal }; // Only literal contributes
   }
 }
 

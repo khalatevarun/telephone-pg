@@ -56,7 +56,7 @@ export default function Home() {
   const [isGameRunning, setIsGameRunning] = useState(false);
   const [streamStates, setStreamStates] = useState<Record<string, ModelStreamState>>({});
   const [winners, setWinners] = useState<{ modelName: string; similarity?: { semantic: number; literal: number; combined: number }; duration: number }[]>([]);
-  const [chain, setChain] = useState<string[]>(['French', 'Spanish']);
+  const [chain, setChain] = useState<string[]>(['French', 'Japanese']);
 
   const addLanguage = (lang: string) => {
     setChain([...chain, lang]);
