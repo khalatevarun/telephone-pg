@@ -14,13 +14,7 @@ export const COMPETING_MODELS = [
     modelId: 'groq/llama-3.3-70b-versatile',
     provider: 'Groq',
     pricing: '$0.05/M input',
-  },
-  {
-    name: 'Grok Code Fast 1',
-    modelId: 'xai/grok-code-fast-1',
-    provider: 'XAI',
-    pricing: '$0.20/M input',
-  },
+  }
 ];
 
 // Translation chain configuration
