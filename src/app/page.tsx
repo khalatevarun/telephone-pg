@@ -52,7 +52,7 @@ const Timer = ({ startTime, endTime }: { startTime?: number; endTime?: number })
 };
 
 export default function Home() {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState('I will meet you at the library tomorrow after lunch.');
   const [isGameRunning, setIsGameRunning] = useState(false);
   const [streamStates, setStreamStates] = useState<Record<string, ModelStreamState>>({});
   const [winners, setWinners] = useState<{ modelName: string; similarity?: { semantic: number; literal: number; combined: number }; duration: number }[]>([]);
