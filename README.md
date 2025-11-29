@@ -1,4 +1,4 @@
-# AI Translation Telephone Competition
+# Translation Telephone - Model Eval Game
 
 A competitive "Telephone" game built for the **AI Gateway Hackathon**. Multiple AI models compete to translate a phrase through a chain of languages and back to English, with the winner determined by a sophisticated similarity scoring system combining semantic meaning and literal accuracy.
 
