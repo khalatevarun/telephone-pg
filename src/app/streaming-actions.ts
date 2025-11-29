@@ -1,6 +1,6 @@
 'use server';
 
-import { streamText } from 'ai';
+import { streamText, embed, cosineSimilarity } from 'ai';
 import { gateway } from '@ai-sdk/gateway';
 
 export type StreamUpdate = {
@@ -9,22 +9,61 @@ export type StreamUpdate = {
   stepIndex: number;
   text: string;
   isComplete: boolean;
-  similarity?: number;
+  similarity?: {
+    semantic: number;
+    literal: number;
+    combined: number;
+  };
 };
 
-function calculateSimilarity(str1: string, str2: string): number {
-  const s1 = str1.toLowerCase().trim();
-  const s2 = str2.toLowerCase().trim();
+async function calculateSimilarity(str1: string, str2: string): Promise<{ semantic: number; literal: number; combined: number }> {
+  const normalized1 = str1.trim().toLowerCase();
+  const normalized2 = str2.trim().toLowerCase();
   
-  if (s1 === s2) return 1;
+  if (normalized1 === normalized2) {
+    return { semantic: 1, literal: 1, combined: 1 };
+  }
   
-  const longer = s1.length > s2.length ? s1 : s2;
-  const shorter = s1.length > s2.length ? s2 : s1;
-  
-  if (longer.length === 0) return 1;
-  
-  const editDistance = getEditDistance(longer, shorter);
-  return 1 - editDistance / longer.length;
+  try {
+    const embeddingModel = gateway.textEmbeddingModel('text-embedding-3-small');
+    
+    const [embedding1, embedding2] = await Promise.all([
+      embed({ model: embeddingModel, value: str1 }),
+      embed({ model: embeddingModel, value: str2 })
+    ]);
+    
+    const semantic = cosineSimilarity(embedding1.embedding, embedding2.embedding);
+    
+    // Literal similarity using edit distance
+    const longer = normalized1.length > normalized2.length ? normalized1 : normalized2;
+    const shorter = normalized1.length > normalized2.length ? normalized2 : normalized1;
+    let literal = 1;
+    if (longer.length > 0) {
+      const editDistance = getEditDistance(longer, shorter);
+      literal = 1 - editDistance / longer.length;
+    }
+    
+    const combined = 0.7 * semantic + 0.3 * literal;
+    
+    return { semantic, literal, combined };
+  } catch (error) {
+    console.error('Error calculating combined similarity:', error);
+    // Fallback to literal similarity only
+    const s1 = normalized1;
+    const s2 = normalized2;
+    
+    if (s1 === s2) return { semantic: 1, literal: 1, combined: 1 };
+    
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    
+    let literal = 1;
+    if (longer.length > 0) {
+      const editDistance = getEditDistance(longer, shorter);
+      literal = 1 - editDistance / longer.length;
+    }
+    return { semantic: 0, literal, combined: 0.3 * literal }; // Only literal contributes
+  }
 }
 
 function getEditDistance(s1: string, s2: string): number {
@@ -116,7 +155,7 @@ export async function* runTelephoneGameStreaming(
   }
 
   // Calculate similarity only at the end
-  const similarity = calculateSimilarity(initialPhrase, currentText);
+  const similarity = await calculateSimilarity(initialPhrase, currentText);
 
   yield {
     modelName,

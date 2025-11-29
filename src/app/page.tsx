@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { runTelephoneGameStreaming } from './streaming-actions';
 import { COMPETING_MODELS } from '@/config/models';
 
@@ -8,7 +8,13 @@ type ModelStreamState = {
   modelName: string;
   steps: Record<number, string>; // stepIndex -> text
   isProcessing: boolean;
-  similarity?: number;
+  similarity?: {
+    semantic: number;
+    literal: number;
+    combined: number;
+  };
+  startTime?: number;
+  endTime?: number;
 };
 
 const AVAILABLE_LANGUAGES = [
@@ -29,11 +35,27 @@ const AVAILABLE_LANGUAGES = [
   'Polish',
 ];
 
+const Timer = ({ startTime, endTime }: { startTime?: number; endTime?: number }) => {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (endTime || !startTime) return;
+
+    const interval = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(interval);
+  }, [endTime, startTime]);
+
+  if (!startTime) return <div className="text-xs font-mono mt-1 text-gray-600">0.0s</div>;
+
+  const elapsed = endTime ? endTime - startTime : now - startTime;
+  return <div className="text-xs font-mono mt-1 text-gray-600">{(Math.max(0, elapsed) / 1000).toFixed(1)}s</div>;
+};
+
 export default function Home() {
   const [input, setInput] = useState('');
   const [isGameRunning, setIsGameRunning] = useState(false);
   const [streamStates, setStreamStates] = useState<Record<string, ModelStreamState>>({});
-  const [winners, setWinners] = useState<{ modelName: string; similarity: number }[]>([]);
+  const [winners, setWinners] = useState<{ modelName: string; similarity?: { semantic: number; literal: number; combined: number }; duration: number }[]>([]);
   const [chain, setChain] = useState<string[]>(['French', 'Spanish']);
 
   const addLanguage = (lang: string) => {
@@ -52,11 +74,13 @@ export default function Home() {
     
     // Initialize stream states for all models
     const initialStates: Record<string, ModelStreamState> = {};
+    const now = Date.now();
     COMPETING_MODELS.forEach((model) => {
       initialStates[model.name] = {
         modelName: model.name,
         steps: { 0: input }, // 0 is Original
         isProcessing: true,
+        startTime: now,
       };
     });
     setStreamStates(initialStates);
@@ -76,39 +100,61 @@ export default function Home() {
             serverChain
           );
 
-          let finalSimilarity = 0;
+          let finalSimilarity: { semantic: number; literal: number; combined: number } | undefined;
 
           for await (const update of stream) {
-            setStreamStates((prev) => ({
-              ...prev,
-              [update.modelName]: {
-                modelName: update.modelName,
-                steps: {
-                  ...prev[update.modelName]?.steps,
-                  [update.stepIndex]: update.text,
+            setStreamStates((prev) => {
+              const newState = {
+                ...prev,
+                [update.modelName]: {
+                  modelName: update.modelName,
+                  steps: {
+                    ...prev[update.modelName]?.steps,
+                    [update.stepIndex]: update.text,
+                  },
+                  isProcessing: !update.isComplete,
+                  similarity: update.similarity,
+                  startTime: prev[update.modelName]?.startTime,
+                  endTime: update.isComplete && update.language === 'English' ? Date.now() : prev[update.modelName]?.endTime,
                 },
-                isProcessing: !update.isComplete,
-                similarity: update.similarity,
-              },
-            }));
+              };
+              return newState;
+            });
             if (update.similarity !== undefined) {
               finalSimilarity = update.similarity;
             }
           }
           
-          return { modelName: model.name, similarity: finalSimilarity };
+          // Calculate duration
+          // We need to access the latest state to get the start time, but we can't access state inside the loop reliably without refs.
+          // However, we set the start time for all models at the beginning (variable `now`).
+          const duration = Date.now() - now;
+
+          return { modelName: model.name, similarity: finalSimilarity, duration };
         })
       );
 
       // Determine winner(s)
+      // Logic: Highest combined similarity wins. If tie (within tolerance), fastest wins.
+      const validResults = results.filter(r => r.similarity !== undefined);
       let maxSimilarity = -1;
-      for (const result of results) {
-        if (result.similarity > maxSimilarity) {
-          maxSimilarity = result.similarity;
+      for (const result of validResults) {
+        if (result.similarity!.combined > maxSimilarity) {
+          maxSimilarity = result.similarity!.combined;
         }
       }
 
-      const winningModels = results.filter(r => Math.abs(r.similarity - maxSimilarity) < 0.0001);
+      // Filter for candidates with high similarity
+      const candidates = validResults.filter(r => Math.abs(r.similarity!.combined - maxSimilarity) < 0.0001);
+      
+      // Sort candidates by duration (ascending)
+      candidates.sort((a, b) => a.duration - b.duration);
+
+      // The winner is the first one (fastest among the best)
+      // We can have multiple winners if they have exact same duration (unlikely but possible)
+      const bestDuration = candidates[0].duration;
+      const winningModels = candidates.filter(c => Math.abs(c.duration - bestDuration) < 50); // 50ms tolerance for time tie
+
       setWinners(winningModels);
 
     } catch (error) {
@@ -217,6 +263,7 @@ export default function Home() {
                 {COMPETING_MODELS.map((model) => {
                   const state = streamStates[model.name];
                   const isWinner = winners.some(w => w.modelName === model.name);
+                  
                   return (
                     <div
                       key={model.name}
@@ -225,8 +272,7 @@ export default function Home() {
                       }`}
                     >
                       <div className="truncate">{model.name}</div>
-                      {isWinner && <div className="text-sm mt-1">🏆</div>}
-                      {state?.isProcessing && <div className="text-xs mt-1">⏳</div>}
+                      <Timer startTime={state?.startTime} endTime={state?.endTime} />
                     </div>
                   );
                 })}
@@ -251,7 +297,6 @@ export default function Home() {
                         const text = state?.steps[stepIndex] || '';
                         const isWinner = winners.some(w => w.modelName === model.name);
                         const isLastCol = modelIndex === COMPETING_MODELS.length - 1;
-                        const isFinalStep = stepIndex === chain.length + 1;
 
                         return (
                           <div
@@ -259,7 +304,7 @@ export default function Home() {
                             className={`border-r border-b border-gray-300 p-3 min-h-20 flex flex-col text-xs leading-relaxed ${
                               isLastCol ? 'border-r-0' : ''
                             } ${
-                              isWinner && isFinalStep
+                              isWinner
                                 ? 'bg-green-100 border-green-300'
                                 : 'bg-white'
                             }`}
@@ -278,6 +323,34 @@ export default function Home() {
                     </div>
                   );
                 })}
+
+                {/* Score Row */}
+                <div className="contents">
+                  {COMPETING_MODELS.map((model, modelIndex) => {
+                    const state = streamStates[model.name];
+                    const sim = state?.similarity;
+                    const isLastCol = modelIndex === COMPETING_MODELS.length - 1;
+                    const isWinner = winners.some(w => w.modelName === model.name);
+                    
+                    return (
+                      <div
+                        key={`score-${model.name}`}
+                        className={`border-r border-b border-gray-300 p-3 min-h-20 flex flex-col text-xs leading-relaxed ${
+                          isLastCol ? 'border-r-0' : ''
+                        } ${
+                          isWinner
+                            ? 'bg-green-100 border-green-300'
+                            : 'bg-white'
+                        }`}
+                      >
+                        <div className="font-semibold text-gray-700 mb-1">Score</div>
+                        <p className="break-words flex-1">
+                          {sim ? `${(sim.combined * 100).toFixed(1)}% (semantic: ${(sim.semantic * 100).toFixed(1)}%, literal: ${(sim.literal * 100).toFixed(1)}%)` : '-'}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -285,7 +358,7 @@ export default function Home() {
             {winners.length > 0 && !isGameRunning && (
               <div className={`rounded-lg p-4 border-2 border-green-400 bg-green-50 shadow-sm`}>
                 <p className="text-sm font-bold text-green-900">
-                  🏆 {winners.map(w => w.modelName).join(' & ')} {winners.length > 1 ? 'win' : 'wins'} with {(winners[0].similarity * 100).toFixed(1)}% match
+                  🏆 {winners.map(w => w.modelName).join(' & ')} {winners.length > 1 ? 'win' : 'wins'} with {(winners[0].similarity!.combined * 100).toFixed(1)}% match in {(winners[0].duration / 1000).toFixed(1)}s
                 </p>
               </div>
             )}
