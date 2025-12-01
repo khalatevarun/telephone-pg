@@ -10,7 +10,7 @@ A competitive "Telephone" game built for the **AI Gateway Hackathon**. Multiple 
 1. **Input**: Start with an English phrase (pre-filled with a default for easy testing).
 2. **Competition**: Multiple AI models simultaneously translate the phrase through a customizable chain of languages (e.g., English → French → Japanese → English).
 3. **Evaluation**: Each model's final English output is compared to the original using:
-   - **Semantic Similarity** (90%): Uses OpenAI embeddings to measure meaning preservation.
+   - **Semantic Similarity** (90%): Uses OpenAI embeddings to measure cosine similarity for meaning preservation.
    - **Literal Similarity** (10%): Edit distance for character/word matching.
    - **Combined Score**: Weighted average of both metrics.
 4. **Winner**: The model with the highest combined score wins. Ties are broken by speed.
