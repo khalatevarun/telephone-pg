@@ -2,7 +2,7 @@
 
 import { generateText } from 'ai';
 import { gateway } from '@ai-sdk/gateway';
-import { COMPETING_MODELS } from '@/config/models';
+import { COMPETING_MODELS } from '@/app/config';
 
 export type TelephoneStep = {
   language: string;

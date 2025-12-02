@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { runTelephoneGameStreaming } from './streaming-actions';
-import { COMPETING_MODELS } from '@/config/models';
+import { COMPETING_MODELS, AVAILABLE_LANGUAGES } from '@/app/config';
 
 type ModelStreamState = {
   modelName: string;
-  steps: Record<number, string>; // stepIndex -> text
+  steps: Record<number, string>; 
   isProcessing: boolean;
   similarity?: {
     semantic: number;
@@ -16,24 +16,6 @@ type ModelStreamState = {
   startTime?: number;
   endTime?: number;
 };
-
-const AVAILABLE_LANGUAGES = [
-  'French',
-  'Spanish',
-  'German',
-  'Italian',
-  'Portuguese',
-  'Russian',
-  'Japanese',
-  'Chinese',
-  'Hindi',
-  'Arabic',
-  'Korean',
-  'Turkish',
-  'Dutch',
-  'Swedish',
-  'Polish',
-];
 
 const Timer = ({ startTime, endTime }: { startTime?: number; endTime?: number }) => {
   const [now, setNow] = useState(() => Date.now());
@@ -78,19 +60,16 @@ export default function Home() {
     COMPETING_MODELS.forEach((model) => {
       initialStates[model.name] = {
         modelName: model.name,
-        steps: { 0: input }, // 0 is Original
+        steps: { 0: input },
         isProcessing: true,
         startTime: now,
       };
     });
     setStreamStates(initialStates);
 
-    // Construct the full chain for the server action
-    // The server action expects the intermediate steps + the final step (English)
     const serverChain = [...chain.map(lang => ({ lang })), { lang: 'English' }];
 
     try {
-      // Run all models in parallel with streaming
       const results = await Promise.all(
         COMPETING_MODELS.map(async (model) => {
           const stream = await runTelephoneGameStreaming(
